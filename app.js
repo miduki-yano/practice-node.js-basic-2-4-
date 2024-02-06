@@ -1,99 +1,52 @@
-const http = require('http');
-const fs = require('fs');
-const ejs = require('ejs');
-const url = require('url');
-const qs = require('querystring');
+var createError = require('http-errors');
+var express = require('express');
+var path = require('path');
+var cookieParser = require('cookie-parser');
+var logger = require('morgan');
+const session = require('express-session');
 
+var indexRouter = require('./routes/index');
+var usersRouter = require('./routes/users');
+var hello = require('./routes/hello');
 
-const index_page =  fs.readFileSync('./index.ejs','utf8');
-const login_page =  fs.readFileSync('./login.ejs','utf8');
+var app = express();
 
-const max_num = 10;
-const filename = 'mydata.txt';
-var message_data;
-readFromFile(filename);
+var session_opt = {
+  secret: 'keyboard cat',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 60 * 60 * 1000}
+};
+app.use(session(session_opt));
 
-var server = http.createServer(getFromClient);
+// view engine setup
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'ejs');
 
-server.listen(3000);
-console.log('Server start!');
+app.use(logger('dev'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public')));
 
-function getFromClient(request,response){
-    var url_parts = url.parse(request.url,true);
-    switch(url_parts.pathname){
-        case '/':
-            response_index(request,response);
-            break;
+app.use('/', indexRouter);
+app.use('/users', usersRouter);
+app.use('/hello',hello);
 
-        case '/login':
-            response_login(request,response);
-            break;
+// catch 404 and forward to error handler
+app.use(function(req, res, next) {
+  next(createError(404));
+});
 
-        default:
-            response.writeHead(200,{'Content-Type': 'text/plain'});
-            response.end('no message...');
-            break;
-    }
-}
+// error handler
+app.use(function(err, req, res, next) {
+  // set locals, only providing error in development
+  res.locals.message = err.message;
+  res.locals.error = req.app.get('env') === 'development' ? err : {};
 
+  // render the error page
+  res.status(err.status || 500);
+  res.render('error');
+});
 
-function response_login(request,response){
-    var content = ejs.render(login_page,{});
-    response.writeHead(200,{'Content-Type': 'text/html'});
-    response.write(content);
-    response.end();
-}
-
-function response_index(request,response){
-    if(request.method == 'POST'){
-        var body = '';
-
-        request.on('data',function(data){
-            body += data;
-        });
-        request.on('end',function(){
-            data = qs.parse(body);
-            addToData(data.id,data.msg,filename,request);
-            write_index(request,response);
-        });
-    }else{
-        write_index(request,response);
-    }
-}
-
-function write_index(request,response){
-    var msg = "何かメッセージを書いてください";
-    var content = ejs.render(index_page,{
-        title: 'Index',
-        content: msg,
-        data: message_data,
-        filename: 'data_item',
-    });
-    response.writeHead(200,{'Content-Type': 'text/html'});
-    response.write(content);
-    response.end();
-}
-
-function readFromFile(fname){
-    fs.readFile(fname,'utf8',(err,data)=>{
-        message_data = data.split('\n');
-    })
-}
-
-function addToData(id,msg,fname,request){
-    var obj = {'id':id,'msg':msg};
-    var obj_str = JSON.stringify(obj);
-    console.log('add data: ' + obj_str);
-    message_data.unshift(obj_str);
-    if(message_data.length > max_num){
-        message_data.pop();
-    }
-    saveToFile(fname);
-}
-
-function saveToFile(fname){
-    var data_str = message_data.join('\n');
-    fs.writeFile(fname,data_str,(err)=>{
-        if(err){throw err;}
-    });
-}
+module.exports = app;
